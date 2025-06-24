@@ -2,7 +2,18 @@
 Escriba el codigo que ejecute la accion solicitada en la pregunta.
 """
 import pandas as pd
-from pathlib import Path
+
+def ajustar_formato_fecha(fecha):
+
+    """
+    Función para corregir formato de fechas inconsistentes (d/m/a vs a/m/d)
+    """
+    partes = fecha.split('/')
+    if len(partes[0]) == 4:
+        fecha_ajustada = '/'.join(reversed(partes))
+    else:
+        fecha_ajustada = '/'.join(partes)
+    return fecha_ajustada
 
 def pregunta_01():
     """
@@ -14,62 +25,42 @@ def pregunta_01():
     El archivo limpio debe escribirse en "files/output/solicitudes_de_credito.csv"
 
     """
-    # Rutas de entrada y salida
-    input_path  = Path("files/input/solicitudes_de_credito.csv")
-    output_path = Path("files/output/solicitudes_de_credito.csv")
+    # Cargar el archivo original
+    df = pd.read_csv("files/input/solicitudes_de_credito.csv", sep=";")
 
-    # Leer el CSV original (separador ';')
-    df = pd.read_csv(input_path, sep=';')
+    # Eliminar filas con valores faltantes
+    df = df.dropna()
 
-    # 1. Eliminar columna de índice importado si existe
-    if 'Unnamed: 0' in df.columns:
-        df = df.drop(columns=['Unnamed: 0'])
+    # Estandarizar columnas de texto: minúsculas
+    df["sexo"] = df["sexo"].str.lower()
+    df["tipo_de_emprendimiento"] = df["tipo_de_emprendimiento"].str.lower()
+    df["idea_negocio"] = df["idea_negocio"].str.lower()
+    df["barrio"] = df["barrio"].str.lower()
+    df["línea_credito"] = df["línea_credito"].str.lower()
 
-    # 2. Normalizar nombres de columnas: quitar espacios y pasar a minúsculas
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.lower()
-        .str.replace(' ', '_', regex=False)
-    )
+    # Reemplazar guiones y guiones bajos por espacios en campos clave
+    reemplazos = ['_', '-']
+    for simbolo in reemplazos:
+        df["idea_negocio"] = df["idea_negocio"].str.replace(simbolo, ' ', regex=False)
+        df["barrio"] = df["barrio"].str.replace(simbolo, ' ', regex=False)
+        df["línea_credito"] = df["línea_credito"].str.replace(simbolo, ' ', regex=False)
 
-    # 3. Limpieza de texto en columnas categóricas
-    text_cols = ['sexo', 'tipo_de_emprendimiento', 'idea_negocio', 'barrio', 'línea_credito']
-    for col in text_cols:
-        if col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.strip()
-                .str.lower()
-                .str.replace('-', ' ', regex=False)
-                # Quitar puntuación: todo lo que no sea letra, dígito o espacio
-                .str.replace(r'[^\w\s]', '', regex=True)
-                .replace({'nan': pd.NA})
-            )
+    # Arreglar fechas en formato mixto
+    df["fecha_de_beneficio"] = df["fecha_de_beneficio"].apply(ajustar_formato_fecha)
 
-    # 4. Convertir fecha a datetime
-    if 'fecha_de_beneficio' in df.columns:
-        df['fecha_de_beneficio'] = pd.to_datetime(
-            df['fecha_de_beneficio'],
-            format='%d/%m/%Y',
-            errors='coerce'
-        )
+    # Limpiar monto_del_credito quitando $, comas y espacios
+    limpiar = [' ', '$', ',']
+    for char in limpiar:
+        df["monto_del_credito"] = df["monto_del_credito"].str.replace(char, '', regex=False)
+    df["monto_del_credito"] = df["monto_del_credito"].astype(float)
 
-    # 5. Manejo de valores faltantes: eliminar filas con NaN en columnas clave
-    key_cols = ['sexo', 'tipo_de_emprendimiento', 'idea_negocio', 'barrio', 'fecha_de_beneficio']
-    df = df.dropna(subset=key_cols)
+    # Eliminar duplicados basados en todas las columnas relevantes
+    df = df.drop_duplicates(subset=[
+        "sexo", "tipo_de_emprendimiento", "idea_negocio", "barrio", "estrato",
+        "comuna_ciudadano", "fecha_de_beneficio", "monto_del_credito", "línea_credito"
+    ]).dropna()
 
-    # 6. Eliminar duplicados exactos
-    df = df.drop_duplicates()
+    # Exportar el archivo limpio
+    df.to_csv("files/output/solicitudes_de_credito.csv", sep=";", index=False)
 
-    # 7. Resetear índice
-    df = df.reset_index(drop=True)
-
-    # Guardar el DataFrame limpio
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_path, sep=';', index=False)
-
-
-if __name__ == "__main__":
-    pregunta_01()
+pregunta_01()
